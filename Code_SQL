@@ -1,0 +1,57 @@
+import os
+import airflow
+
+from datetime import timedelta
+from airflow.models import DAG
+from airflow.operators.sensors import ExternalTaskSensor, TimeDeltaSensor
+from airflow.contrib.operators.bigquery_operator import BigQueryOperator
+
+default_args = {
+    'owner': 'airflow',
+    'depends_on_past': False,
+    'email_on_failure': True,
+    'email_on_retry': False,
+    'retries': 2,
+    'retry_delay': timedelta(minutes=2),
+    'provide_context': True
+}
+
+DAG_NAME = 'ETL_with_Airflow'
+
+dag = DAG(
+    dag_id=DAG_NAME,
+    schedule_interval='@daily',  # Ejecutar diariamente
+    start_date=airflow.utils.dates.days_ago(2),
+    default_args=default_args
+)
+
+delay_sensor = TimeDeltaSensor(
+    task_id='delay_sensor',
+    delta=timedelta(minutes=30),  # Sensor de tiempo delta
+    priority_weight=1000,
+    retries=50,
+    dag=dag
+)
+
+# Operador para ejecutar la transformación en BigQuery
+transform_etl = BigQueryOperator(
+    task_id='transform_etl',
+    sql="""
+       
+        SELECT 
+            *
+        FROM
+            `ejemplo_tu_dataset.tu_tabla`
+    """.format(
+       
+    ),
+    ejemplo_destination_dataset_table='ejemplo_.tu_dataset.tu_tabla_destino',
+    write_disposition='WRITE_TRUNCATE',
+    bigquery_conn_id=os.environ['BIGQUERY_CONN_ID'],
+    allow_large_results=True,
+    use_legacy_sql=False,
+    dag=dag
+)
+
+# Definir la secuencia de tareas
+delay_sensor >> transform_etl
